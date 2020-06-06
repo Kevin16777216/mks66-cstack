@@ -8,6 +8,7 @@
 #include "draw.h"
 #include "matrix.h"
 #include "parser.h"
+#include "stack.h"
 
 /*======== void parse_file () ==========
 Inputs:   char * filename
@@ -73,10 +74,25 @@ int check_str(char * line, char * value){
   return strncmp(line, value, strlen(line)) == 0;
 }
 
+void mul_tris(struct stack * gstack, struct matrix * tris, screen s , color c){
+  struct matrix * tmp = peek(gstack);
+      matrix_mult(tmp, tris);
+      draw_tris(tris, s,c);
+      tris->lastcol = 0;
+}
+
+void mul_edges(struct stack * gstack, struct matrix * edges, screen s , color c){
+  struct matrix * tmp = peek(gstack);
+      matrix_mult(tmp, edges);
+      draw_lines(edges, s,c);
+      edges->lastcol = 0;
+}
+
 
 void parse_file ( char * filename,
-                  struct matrix * transform,
+                  struct stack * gstack,
                   struct matrix * edges,
+                  struct matrix * tris,
                   screen s) {
 
   FILE *f;
@@ -112,6 +128,7 @@ void parse_file ( char * filename,
       sscanf(line, "%lf %lf %lf %lf",
              xvals, yvals, zvals, &r);
       add_circle( edges, xvals[0], yvals[0], zvals[0], r, step);
+      mul_edges(gstack, edges, s,c);
     }
 
     //hermite, bezier
@@ -123,6 +140,7 @@ void parse_file ( char * filename,
                     xvals+2, yvals+2, xvals+3, yvals+3);
       add_curve( edges, xvals[0], yvals[0], xvals[1], yvals[1],
                         xvals[2], yvals[2], xvals[3], yvals[3], step, type);
+      mul_edges(gstack, edges, s,c);
     }
     
     //line
@@ -133,16 +151,20 @@ void parse_file ( char * filename,
                   xvals+1, yvals+1, zvals+1);
       add_edge(edges, xvals[0], yvals[0], zvals[0],
                       xvals[1], yvals[1], zvals[1]);
+      mul_edges(gstack, edges, s,c);
     }
   
+    //3D Shapes
+    
     //box
     else if ( check_str(line, "box")) {
       fgets(line, sizeof(line), f);
       sscanf(line, "%lf %lf %lf %lf %lf %lf",
                   xvals, yvals, zvals,
                   xvals+1, yvals+1, zvals+1);
-      add_box(edges, xvals[0], yvals[0], zvals[0],
+      add_box(tris, xvals[0], yvals[0], zvals[0],
                 xvals[1], yvals[1], zvals[1]);
+      mul_tris(gstack, tris,s,c);
     }
     
     //sphere
@@ -150,7 +172,8 @@ void parse_file ( char * filename,
       fgets(line, sizeof(line), f);
       sscanf(line, "%lf %lf %lf %lf",
                     xvals, yvals, zvals,&r);     
-      add_sphere(edges, xvals[0], yvals[0], zvals[0],r,step);
+      add_sphere(tris, xvals[0], yvals[0], zvals[0],r,step);
+      mul_tris(gstack, tris,s,c);
     }
 
     //torus
@@ -158,27 +181,21 @@ void parse_file ( char * filename,
       fgets(line, sizeof(line), f);
       sscanf(line, "%lf %lf %lf %lf %lf",
                     xvals, yvals, zvals,xvals+1, yvals+1);     
-      add_torus(edges, xvals[0], yvals[0], zvals[0],
+      add_torus(tris, xvals[0], yvals[0], zvals[0],
                 xvals[1], yvals[1], step);
-    }
-
-
-    //clear
-    else if ( check_str(line, "clear")) {
-      // fgets(line, sizeof(line), f);
-      free_matrix(edges);
-      free_matrix(transform);
-      edges = new_matrix(4,4);
-      transform = new_matrix(4,4);
+      mul_tris(gstack, tris,s,c);
     }
     
+
+    //TRANSFORMATIONS:
+
     //scale
     else if (check_str(line, "scale")) {
       fgets(line, sizeof(line), f);
       sscanf(line, "%lf %lf %lf",
               xvals, yvals, zvals);
       tmp = make_scale( xvals[0], yvals[0], zvals[0]);
-      matrix_mult(tmp, transform);
+      applyTransform(gstack, tmp);
     }
 
     //move
@@ -187,7 +204,7 @@ void parse_file ( char * filename,
       sscanf(line, "%lf %lf %lf",
              xvals, yvals, zvals);
       tmp = make_translate( xvals[0], yvals[0], zvals[0]);
-      matrix_mult(tmp, transform);
+      applyTransform(gstack, tmp);
     }
 
     //rotate
@@ -201,23 +218,19 @@ void parse_file ( char * filename,
         tmp = make_rotY( theta );
       else
         tmp = make_rotZ( theta );
-      matrix_mult(tmp, transform);
+      applyTransform(gstack, tmp);
     }
 
-    //ident
-    else if ( check_str(line, "ident")) {
-      ident(transform);
+    //STACK COMMANDS
+    else if (check_str(line, "push")) {
+      push(gstack);
     }
-
-    //apply
-    else if ( check_str(line, "apply")) {
-      matrix_mult(transform, edges);
+    else if (check_str(line, "pop")) {
+      pop(gstack);
     }
 
     //display
     else if ( check_str(line, "display")) {
-      clear_screen(s);
-      draw_tris(edges, s, c);
       display(s);
     }
 
@@ -225,8 +238,8 @@ void parse_file ( char * filename,
     else if ( check_str(line, "save")) {
       fgets(line, sizeof(line), f);
       *strchr(line, '\n') = 0;
+      printf("saving");
       clear_screen(s);
-      draw_tris(edges, s, c);
       save_extension(s, line);
     }
   }

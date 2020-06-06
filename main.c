@@ -8,23 +8,24 @@
 #include "draw.h"
 #include "matrix.h"
 #include "parser.h"
+#include "stack.h"
 
 int main(int argc, char **argv) {
 
   screen s;
+  struct stack * gstack;
   struct matrix * tris;
   struct matrix * edges;
-  struct matrix * transform;
 
+  gstack = new_stack();
   tris = new_matrix(4, 0);
   edges = new_matrix(4, 4);
-  transform = new_matrix(4, 4);
 
   if ( argc == 2 )
-    parse_file( argv[1], transform, tris, s );
+    parse_file( argv[1],gstack, edges, tris, s );
   else
-    parse_file( "stdin", transform, tris, s );
-
+    parse_file( "stdin",gstack, edges, tris, s );
   free_matrix( tris );
-  free_matrix( transform );
+  free_matrix( edges );
+  free_stack(gstack);
 }  
